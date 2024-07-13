@@ -1,53 +1,78 @@
-#include "joystick.h"
-#include "common.h"
+// #include <HID-Project.h>
 
-constexpr bool LEONARDO = false;
+#include "joystick.h"
+#include "button_toggle.h"
+#include "common.h"
+#include "pins.h"
 
 // ===========================
 
 class MainState {
   public:
-    MainState(const uint8_t main_x, const uint8_t main_y) : joystick_(main_x, main_y) {}
+    MainState(const uint8_t mainX, const uint8_t mainY) :
+      inputToggle_(INPUT_TOGGLE_BUTTON_PIN), joystick_(mainX, mainY)
+    {}
 
-    void update_loop() {
-      joystick_.update();
+    void updateLoop() {
+      joystick_.poll();
+      inputToggle_.poll();
+
+      digitalWrite(INPUT_TOGGLE_LED_PIN, inputToggle_.active());
+
+      if constexpr (ENABLE_SERIAL) Serial.println("BUTTON = " + String(inputToggle_.active()));
+
+      // Handle reading from the joystick.
+      if (inputToggle_.active()) {  // Normal print mode.
+        if constexpr (ENABLE_SERIAL) {
+          joystick_.printState();
+          Serial.println();
+        }
+
+        setDirectionLEDs();
+      }
     }
   private:
+    void setDirectionLEDs() {
+      const Vec posCentred = joystick_.posCentred();
+      if (posCentred.x_ > 0.0) {
+        setPWM_LED(posCentred.x_ * 2.0, directionPins::RIGHT);
+        setPWM_LED(0.0, directionPins::LEFT);
+      } else {
+        setPWM_LED(-posCentred.x_ * 2.0, directionPins::LEFT);
+        setPWM_LED(0.0, directionPins::RIGHT);
+      }
+
+      if (posCentred.y_ > 0.0) {
+        setPWM_LED(posCentred.y_ * 2.0, directionPins::UP);
+        setPWM_LED(0.0, directionPins::DOWN);
+      } else {
+        setPWM_LED(-posCentred.y_ * 2.0, directionPins::DOWN);
+        setPWM_LED(0.0, directionPins::UP);
+      }
+    }
+
+    ButtonToggleState inputToggle_;
     JoyStick joystick_;
 };
-
-class PinSetup {
-  public:
-    PinSetup() {
-      pinMode(CALIBRATION_LED_PIN, OUTPUT);
-      pinMode(debug::STATUS_LED_PIN, OUTPUT);
-    }
-};
-
 
 // Static vars.
 
 PinSetup PINSETUP;
-MainState main_state(X_PIN, Y_PIN);
+MainState mainState(X_PIN, Y_PIN);
 
 void setup() {
-  Serial.begin(LEONARDO ? 57600 : 9600);
+  if constexpr (ENABLE_SERIAL) {
+    Serial.begin(9600);
 
-  // constexpr int N = 2000/50;
-  // for (int n = 0; n < N; ++n) {
-  //   set_pwm_led( (float)(n + 1) / (float)N, debug::STATUS_LED_PIN );
-  //   delay(50);
-  // }
-  // set_pwm_led(0.0, debug::STATUS_LED_PIN);
-
-  if constexpr (LEONARDO) {
-    while (!Serial) {
-      // wait for serial port to connect. Needed for Leonardo only
+    if constexpr (LEONARDO) {
+      while (!Serial) {
+        // wait for serial port to connect. Needed for Leonardo only
+      }
     }
   }
 }
 
 void loop() {
-  main_state.update_loop();
+  mainState.updateLoop();
   // delay(100);
 }
